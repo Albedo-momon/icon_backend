@@ -1,0 +1,50 @@
+{
+  "name": "icon-backend",
+  "version": "1.0.0",
+  "description": "Production-grade Node.js/Express API for Icon Computers",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "nodemon --watch src --exec tsx src/server.ts",
+    "build": "tsc -p .",
+    "start": "node dist/server.js",
+    "prisma": "prisma",
+    "migrate": "prisma migrate dev",
+    "seed": "prisma db seed",
+    "reset": "prisma migrate reset --force",
+    "test": "jest"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "keywords": ["express", "typescript", "prisma", "postgresql"],
+  "author": "Icon Computers",
+  "license": "ISC",
+  "dependencies": {
+    "@prisma/client": "^6.17.0",
+    "bcrypt": "^6.0.0",
+    "bullmq": "^5.61.0",
+    "cors": "^2.8.5",
+    "cross-env": "^10.1.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "ioredis": "^5.8.1",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.16.3",
+    "pino": "^10.0.0",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.7.1",
+    "jest": "^30.2.0",
+    "nodemon": "^3.1.10",
+    "prisma": "^6.17.0",
+    "supertest": "^7.1.4",
+    "ts-jest": "^29.4.5",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
