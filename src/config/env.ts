@@ -1,8 +1,8 @@
-import { config } from 'dotenv';
+import dotenvFlow from 'dotenv-flow';
 import { z } from 'zod';
 
-// Load environment variables
-config();
+// Load layered environment variables (.env, .env.development, .env.local)
+dotenvFlow.config();
 
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),

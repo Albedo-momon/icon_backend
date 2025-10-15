@@ -107,6 +107,46 @@ scripts/
 ### CMS
 - `GET /cms` - Returns active banners, offers, and products with date filtering
 
+## Media uploads (S3)
+
+Endpoint: `POST /uploads/presign` (ADMIN only)
+
+Body:
+
+```
+{ "section":"hero|special|laptop", "filename":"banner.png", "contentType":"image/png" }
+```
+
+Response:
+
+```
+{
+  "uploadUrl":"https://s3/...signed...",
+  "publicUrl":"https://.../hero/2025/10/15/<uuid>-banner.png",
+  "key":"hero/2025/10/15/<uuid>-banner.png",
+  "expiresIn":300
+}
+```
+
+Client flow:
+- Call `/uploads/presign` to receive `uploadUrl`, `publicUrl`, and `key`.
+- PUT the file to `uploadUrl` with header `Content-Type: <contentType>`.
+- Use the returned `publicUrl` in subsequent Create/Update CMS calls.
+
+Notes:
+- Allowed content types: `image/png`, `image/jpeg`, `image/webp`.
+- Max size: choose a client-side limit (e.g., 5MB) and enforce in UI.
+- Keys are immutable; delete/replace via new upload if needed.
+
+Environment variables required:
+- `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_BASE`.
+
+Admin CMS endpoints accept `imageUrl`:
+- `/admin/hero-banners` → `imageUrl` (string)
+- `/admin/special-offers` → `imageUrl`, pricing fields
+- `/admin/laptop-offers` → `imageUrl`, pricing fields
+
+
 ## Database Models
 
 - **User** - System users (admin, agent, customer)
@@ -142,3 +182,54 @@ CORS_ORIGINS=*
 ## Next Steps
 
 This is a base setup with health checks and CMS endpoints. Additional features like authentication, business logic, and worker queues can be added as needed.
+- Manual verification
+  - Get an ADMIN token (Clerk or native JWT).
+  - Presign:
+    ```bash
+    curl -X POST http://localhost:8080/uploads/presign \
+      -H "Authorization: Bearer <ADMIN_JWT>" \
+      -H "Content-Type: application/json" \
+      -d '{"section":"hero","filename":"summer Sale.png","contentType":"image/png"}'
+    ```
+  - Upload:
+    ```bash
+    curl -X PUT "<uploadUrl from presign>" \
+      -H "Content-Type: image/png" \
+      --data-binary @./banner.png
+    ```
+  - Open the returned `publicUrl` in the browser; image should load.
+
+## Environment Setup (dotenv-flow)
+
+- Layered env files are loaded using `dotenv-flow`:
+  - `.env` – common settings (DB, S3 region/bucket/public base, etc.)
+  - `.env.development` – development defaults (not sensitive)
+  - `.env.local` – developer overrides; do not commit
+
+- Example `.env.development` defaults:
+  - `NODE_ENV=development`
+  - `PORT=8080`
+  - `AUTH_MODE=native`
+  - `JWT_SECRET=dev_secret_123`
+  - `ADMIN_BOOTSTRAP_SECRET=bootstrap_123`
+
+## Postman Testing (Native JWT)
+
+- Ensure `.env.development` has `AUTH_MODE=native` and `JWT_SECRET` set. Optionally override in `.env.local`.
+- Seed local admin (runs only in native mode): `npm run seed`
+- Steps:
+  - `POST /auth/admin/login` with body `{ "email":"admin@local.dev", "password":"Admin@123" }` → copy `token`
+  - In Postman, set header `Authorization: Bearer <token>`
+  - Call `GET /me` → should return admin profile
+  - Call protected endpoints: `POST /uploads/presign`, `GET/POST /admin/*`, `GET /home`
+
+## Auth Modes
+
+- Native:
+  - `requireAuth` verifies JWT using `JWT_SECRET`
+  - `/auth/*` routes support register/login for users and admins
+  - Seed creates `admin@local.dev` with password `Admin@123`
+- Clerk:
+  - `requireAuth` verifies Clerk JWT via JWKS and upserts users
+  - `/auth/*` routes respond `405` with `{error:"Use Clerk"}`
+  - No change to production Clerk flow
