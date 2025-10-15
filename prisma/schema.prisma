@@ -1,5 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// Icon Backend simplified Prisma schema for auth and CMS
 
 generator client {
   provider = "prisma-client-js"
@@ -10,265 +9,65 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum UserRole {
-  user
-  agent
-  admin
-}
-
-enum AgentStatus {
-  active
-  suspended
-}
-
-enum IssueType {
-  hardware
-  software
-  network
-  other
-}
-
-enum RequestStatus {
-  Requested
-  Assigned
-  Accepted
-  Expired
-  Reached
-  WorkStarted
-  WorkCompleted
-  Closed
-}
-
-enum Platform {
-  ios
-  android
-  web
+enum Role {
+  USER
+  AGENT
+  ADMIN
 }
 
 model User {
-  id           String    @id @default(uuid()) @db.Uuid
-  role         UserRole
-  name         String
-  phone        String?   @unique
-  email        String?   @unique
-  passwordHash String
-  createdAt    DateTime  @default(now())
-
-  // Relations
-  agent     Agent?
-  addresses Address[]
-  requests  Request[]
-  devices   Device[]
-
-  @@map("users")
+  id          String   @id @default(uuid())
+  externalId  String?  @unique
+  email       String   @unique
+  name        String?
+  passwordHash String?
+  mobileNum   String?
+  role        Role     @default(USER)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
-model Shop {
-  id          String  @id @default(uuid()) @db.Uuid
-  name        String
-  addressText String?
-  pincode     String?
-  phone       String?
-
-  // Relations
-  agents          Agent[]
-  requests        Request[]
-  banners         Banner[]
-  offers          Offer[]
-  products        Product[]
-  sectionsConfigs SectionsConfig[]
-
-  @@map("shops")
+model HeroBanner {
+  id          String   @id @default(uuid())
+  imageUrl    String
+  title       String?
+  subtitle    String?
+  ctaText     String?
+  ctaLink     String?
+  status      String   @default("ACTIVE")
+  sortOrder   Int      @default(0)
+  validFrom   DateTime?
+  validTo     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
-model Agent {
-  id                 String      @id @default(uuid()) @db.Uuid
-  userId             String      @unique @db.Uuid
-  shopId             String      @db.Uuid
-  status             AgentStatus @default(active)
-  concurrentCapacity Int         @default(1)
-  lastSeenAt         DateTime?
-  skills             Json?
-
-  // Relations
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  shop             Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  assignedRequests Request[]
-  devices          Device[]
-
-  @@map("agents")
+model SpecialOffer {
+  id              String   @id @default(uuid())
+  imageUrl        String
+  productName     String
+  priceCents      Int
+  discountedCents Int
+  discountPercent Int
+  status          String   @default("ACTIVE")
+  sortOrder       Int      @default(0)
+  validFrom       DateTime?
+  validTo         DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
-model Address {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @db.Uuid
-  label     String?
-  line1     String
-  city      String?
-  pincode   String?
-  lat       Decimal?
-  lng       Decimal?
-  isDefault Boolean  @default(false)
-
-  // Relations
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  requests Request[]
-
-  @@map("addresses")
-}
-
-model Request {
-  id              String        @id @default(uuid()) @db.Uuid
-  userId          String        @db.Uuid
-  shopId          String        @db.Uuid
-  issueType       IssueType
-  otherText       String?
-  description     String?
-  addressId       String?       @db.Uuid
-  status          RequestStatus @default(Requested)
-  assignedAgentId String?       @db.Uuid
-  queuedAt        DateTime?
-  scheduledFor    DateTime?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-
-  // Relations
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  shop          Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  address       Address?       @relation(fields: [addressId], references: [id])
-  assignedAgent Agent?         @relation(fields: [assignedAgentId], references: [id])
-  events        RequestEvent[]
-  timers        Timer[]
-  feedback      Feedback?
-
-  @@map("requests")
-}
-
-model RequestEvent {
-  id        String   @id @default(uuid()) @db.Uuid
-  requestId String   @db.Uuid
-  type      String
-  actorId   String?  @db.Uuid
-  meta      Json?
-  createdAt DateTime @default(now())
-
-  // Relations
-  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
-
-  @@map("request_events")
-}
-
-model Timer {
-  id           String    @id @default(uuid()) @db.Uuid
-  requestId    String    @db.Uuid
-  startTs      DateTime?
-  endTs        DateTime?
-  totalSeconds Int?
-
-  // Relations
-  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
-
-  @@map("timers")
-}
-
-model Feedback {
-  id        String   @id @default(uuid()) @db.Uuid
-  requestId String   @unique @db.Uuid
-  rating    Int
-  comment   String?
-  createdAt DateTime @default(now())
-
-  // Relations
-  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
-
-  @@map("feedback")
-}
-
-model Device {
-  id                String    @id @default(uuid()) @db.Uuid
-  userId            String?   @db.Uuid
-  agentId           String?   @db.Uuid
-  platform          Platform
-  pushToken         String
-  lastRegisteredAt  DateTime?
-
-  // Relations
-  user  User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  agent Agent? @relation(fields: [agentId], references: [id], onDelete: Cascade)
-
-  @@map("devices")
-}
-
-model Banner {
-  id         String    @id @default(uuid()) @db.Uuid
-  shopId     String    @db.Uuid
-  title      String
-  subtitle   String?
-  imageUrl   String
-  targetType String
-  targetId   String?   @db.Uuid
-  targetUrl  String?
-  isActive   Boolean   @default(true)
-  sortOrder  Int       @default(0)
-  validFrom  DateTime?
-  validTo    DateTime?
-
-  // Relations
-  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
-
-  @@map("banners")
-}
-
-model Offer {
-  id        String    @id @default(uuid()) @db.Uuid
-  shopId    String    @db.Uuid
-  title     String
-  shortDesc String?
-  imageUrl  String
-  badgeText String?
-  validFrom DateTime?
-  validTo   DateTime?
-  isActive  Boolean   @default(true)
-  sortOrder Int       @default(0)
-
-  // Relations
-  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
-
-  @@map("offers")
-}
-
-model Product {
-  id        String    @id @default(uuid()) @db.Uuid
-  shopId    String    @db.Uuid
-  name      String
-  sku       String?
-  imageUrl  String?
-  mrpCents  Int
-  saleCents Int?
-  shortDesc String?
-  isActive  Boolean   @default(true)
-  inStock   Boolean   @default(true)
-  sortOrder Int       @default(0)
-  tags      String[]
-
-  // Relations
-  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
-
-  @@map("products")
-}
-
-model SectionsConfig {
-  id            String   @id @default(uuid()) @db.Uuid
-  shopId        String   @db.Uuid
-  showBanners   Boolean  @default(true)
-  showOffers    Boolean  @default(true)
-  showProducts  Boolean  @default(true)
-  productsLimit Int      @default(8)
-  offersLimit   Int      @default(6)
-  updatedAt     DateTime @default(now())
-
-  // Relations
-  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
-
-  @@map("sections_configs")
+model LaptopOffer {
+  id              String   @id @default(uuid())
+  imageUrl        String
+  productName     String
+  priceCents      Int
+  discountedCents Int
+  discountPercent Int
+  status          String   @default("ACTIVE")
+  sortOrder       Int      @default(0)
+  validFrom       DateTime?
+  validTo         DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }

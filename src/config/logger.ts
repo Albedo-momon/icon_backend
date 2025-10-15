@@ -1,17 +1,18 @@
-import pino from 'pino';
-
-const isProduction = process.env.NODE_ENV === 'production';
-
-export const logger = pino({
-  level: isProduction ? 'info' : 'debug',
-  ...(isProduction ? {} : {
-    transport: {
-      target: 'pino-pretty',
-      options: {
-        colorize: true,
-        ignore: 'pid,hostname',
-        translateTime: 'SYS:standard',
-      },
-    }
-  }),
-});
+export const logger = {
+  info: (obj: any, msg?: string) => {
+    if (msg) console.info(msg, obj);
+    else console.info(obj);
+  },
+  error: (obj: any, msg?: string) => {
+    if (msg) console.error(msg, obj);
+    else console.error(obj);
+  },
+  warn: (obj: any, msg?: string) => {
+    if (msg) console.warn(msg, obj);
+    else console.warn(obj);
+  },
+  debug: (obj: any, msg?: string) => {
+    if (msg) console.debug(msg, obj);
+    else console.debug(obj);
+  },
+};
