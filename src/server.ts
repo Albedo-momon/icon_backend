@@ -31,8 +31,8 @@ app.use((req, res, next) => {
 app.use('/', healthRoutes);
 app.use('/', cmsRoutes);
 
-// 404 handler
-app.use('*', (req, res) => {
+// 404 handler (Express 5: avoid wildcard string)
+app.use((req, res) => {
   logger.warn({ url: req.originalUrl }, 'Route not found');
   res.status(404).json({ error: 'Route not found' });
 });

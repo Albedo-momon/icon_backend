@@ -16,7 +16,12 @@
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
-  "keywords": ["express", "typescript", "prisma", "postgresql"],
+  "keywords": [
+    "express",
+    "typescript",
+    "prisma",
+    "postgresql"
+  ],
   "author": "Icon Computers",
   "license": "ISC",
   "dependencies": {
@@ -41,6 +46,7 @@
     "@types/node": "^24.7.1",
     "jest": "^30.2.0",
     "nodemon": "^3.1.10",
+    "pino-pretty": "^13.1.2",
     "prisma": "^6.17.0",
     "supertest": "^7.1.4",
     "ts-jest": "^29.4.5",

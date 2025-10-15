@@ -31,12 +31,27 @@ A production-grade Node.js/Express API with TypeScript, Prisma, and PostgreSQL f
    # Edit .env with your database URL
    ```
 
-3. **Set up database**
-   ```bash
-   npm run migrate && npm run seed
-   ```
+3. **Start PostgreSQL (password: 1234)**
+   - Docker (recommended):
+     ```bash
+     docker compose up -d
+     ```
+   - Windows (no Docker):
+     1. Install PostgreSQL 16 from the official installer.
+     2. Set password to `1234` and create a database named `icon_backend`.
+     3. Ensure PostgreSQL is listening on `localhost:5432`.
 
-4. **Start development server**
+4. **Set up database**
+   - macOS/Linux:
+     ```bash
+     npm run migrate && npm run seed
+     ```
+   - Windows (PowerShell):
+     ```powershell
+     ./scripts/migrate-seed.ps1
+     ```
+
+5. **Start development server**
    ```bash
    npm run dev
    ```
