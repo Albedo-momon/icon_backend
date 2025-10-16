@@ -46,14 +46,10 @@ export const requireAuthClerk: RequestHandler = (req: Request, res: Response, ne
         return res.status(401).json({ error: 'Invalid token' });
       }
 
-      const emailVerified = (decoded as any).email_verified;
       const email = (decoded as any).email as string | undefined;
       const name = (decoded as any).name as string | undefined;
       const externalId = (decoded as any).sub as string | undefined;
 
-      if (!emailVerified) {
-        return res.status(401).json({ error: 'Email not verified' });
-      }
       if (!email || !externalId) {
         return res.status(401).json({ error: 'Missing required claims' });
       }
