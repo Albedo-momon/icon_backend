@@ -10,6 +10,9 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+.env*
+!.env.example
+!.env.development
 
 # Build output
 dist/
@@ -17,6 +20,8 @@ build/
 
 # Test coverage
 coverage/
+.nyc_output/
+.eslintcache
 
 # IDE
 .vscode/
@@ -27,6 +32,7 @@ coverage/
 # OS
 .DS_Store
 Thumbs.db
+*.code-workspace
 
 # Logs
 logs/
@@ -41,3 +47,15 @@ pids/
 # Temporary folders
 tmp/
 temp/
+
+# Prisma local artifacts
+prisma/.env
+prisma/dev.db
+*.sqlite
+
+# Keys & certs
+*.pem
+*.key
+
+# Node REPL history
+.node_repl_history

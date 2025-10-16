@@ -10,6 +10,7 @@ declare global {
     }
     interface Request {
       user?: AuthUser;
+      log?: any;
     }
   }
 }

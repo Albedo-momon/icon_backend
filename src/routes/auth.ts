@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authConfig } from '../config/auth';
+import { getAuthMode } from '../config/authMode';
 import { prisma } from '../db/prisma';
 import { logger } from '../config/logger';
 import { formatError, formatZodError } from '../utils/errors';
@@ -12,9 +13,16 @@ function clerkOnly(res: any) {
   return res.status(405).json(formatError('METHOD_NOT_ALLOWED', 'Use Clerk client SDK'));
 }
 
+// Temporary visibility to confirm mode during requests
+router.use((req, _res, next) => {
+  const mode = getAuthMode();
+  logger.debug({ mode, path: req.path, method: req.method }, 'auth:router:init');
+  next();
+});
+
 // User Register
 router.post('/auth/user/register', async (req, res) => {
-  if (authConfig.isClerk()) return clerkOnly(res);
+  if (getAuthMode() === 'clerk') return clerkOnly(res);
   const parsed = userRegisterSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json(formatZodError(parsed.error));
   const { email, password, name } = parsed.data;
@@ -33,7 +41,7 @@ router.post('/auth/user/register', async (req, res) => {
 
 // User Login
 router.post('/auth/user/login', async (req, res) => {
-  if (authConfig.isClerk()) return clerkOnly(res);
+  if (getAuthMode() === 'clerk') return clerkOnly(res);
   const parsed = userLoginSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json(formatZodError(parsed.error));
   const { email, password } = parsed.data;
@@ -52,7 +60,7 @@ router.post('/auth/user/login', async (req, res) => {
 
 // Admin Register
 router.post('/auth/admin/register', async (req, res) => {
-  if (authConfig.isClerk()) return clerkOnly(res);
+  if (getAuthMode() === 'clerk') return clerkOnly(res);
   const parsed = adminRegisterSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json(formatZodError(parsed.error));
   const { email, password, name, secret } = parsed.data;
@@ -74,18 +82,26 @@ router.post('/auth/admin/register', async (req, res) => {
 
 // Admin Login
 router.post('/auth/admin/login', async (req, res) => {
-  if (authConfig.isClerk()) return clerkOnly(res);
+  const mode = getAuthMode();
+  // Controller entry checkpoint
+  (req as any).log?.debug({ mode }, 'auth:enter');
+  if (mode === 'clerk') return clerkOnly(res);
   const parsed = adminLoginSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json(formatZodError(parsed.error));
   const { email, password } = parsed.data;
   try {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || user.role !== 'ADMIN' || !user.passwordHash) {
+      (req as any).log?.warn({ email }, 'auth:native:login_failed');
       return res.status(401).json(formatError('INVALID_CREDENTIALS', 'Invalid admin credentials'));
     }
     const ok = await verifyPassword(password, user.passwordHash);
-    if (!ok) return res.status(401).json(formatError('INVALID_CREDENTIALS', 'Invalid admin credentials'));
+    if (!ok) {
+      (req as any).log?.warn({ email }, 'auth:native:login_failed');
+      return res.status(401).json(formatError('INVALID_CREDENTIALS', 'Invalid admin credentials'));
+    }
     const token = signNativeJwt({ uid: user.id, email: user.email, role: user.role });
+    (req as any).log?.info({ userId: user.id }, 'auth:native:login_success');
     res.json({ token, user: { id: user.id, email: user.email, role: user.role, name: user.name } });
   } catch (error) {
     logger.error({ error }, 'Admin login failed');
