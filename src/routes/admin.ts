@@ -5,6 +5,9 @@ import { requireRole } from '../middleware/rbac';
 import { formatError, formatZodError } from '../utils/errors';
 import { heroBannerSchema, specialOfferSchema, laptopOfferSchema } from '../validation/schemas';
 import { logger } from '../config/logger';
+import heroAdminRouter from './admin/heroBanners';
+import specialOffersRouter from './admin/specialOffers';
+import laptopOffersRouter from './admin/laptopOffers';
 
 const router = Router();
 
@@ -29,6 +32,11 @@ function computeDiscountPercent(priceCents: number, discountedCents: number) {
 // Hero Banners CRUD moved to /src/routes/admin/heroBanners.ts and mounted via admin router
 
 // Special Offers CRUD moved to /src/routes/admin/specialOffers.ts and mounted via admin router
+
+// Mount moved admin feature routers for test harness and compatibility
+router.use('/admin/hero-banners', ...adminGuard, heroAdminRouter);
+router.use('/admin/special-offers', ...adminGuard, specialOffersRouter);
+router.use('/admin/laptop-offers', ...adminGuard, laptopOffersRouter);
 
 
 // Role management

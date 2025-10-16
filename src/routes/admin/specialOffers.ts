@@ -192,10 +192,19 @@ router.patch('/:id', async (req, res) => {
     if (disc > price) {
       return res.status(400).json(formatError('VALIDATION_ERROR', 'discountedCents must be ≤ priceCents'));
     }
-    data.discountPercent = computeDiscountPercentFloor(price, disc);
+    const computed = computeDiscountPercentFloor(price, disc);
+    // If client provided discountPercent, enforce ±1% tolerance against computed
+    if (Object.prototype.hasOwnProperty.call(req.body, 'discountPercent')) {
+      const provided = req.body.discountPercent;
+      if (provided != null && Math.abs(provided - computed) > 1) {
+        return res.status(400).json(formatError('VALIDATION_ERROR', 'discountPercent inconsistent with price/discount (±1%)'));
+      }
+    }
+    data.discountPercent = computed;
 
     const updated = await prisma.specialOffer.update({ where: { id }, data });
     req.log?.info({ id }, 'admin:special:update:ok');
+    // TODO: Phase 2 — when imageUrl is replaced, call maybeDeleteOldAsset('special', oldUrl, { specialId: id }) after successful update
     return res.json(updated);
   } catch (err: any) {
     req.log?.error({ id, err }, 'admin:special:update:fail');

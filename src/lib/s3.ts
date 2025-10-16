@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import type { AwsCredentialIdentity } from '@aws-sdk/types';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
@@ -88,4 +88,57 @@ export async function presignPutUrl({
 export function getS3PublicBase(): string {
   const cfg = env ?? getS3Env();
   return cfg.publicBase;
+}
+
+export function isS3Configured(): boolean {
+  try {
+    const cfg = env ?? getS3Env();
+    return Boolean(cfg.region && cfg.bucket && cfg.publicBase);
+  } catch {
+    return false;
+  }
+}
+
+export async function deleteObjectKey(key: string): Promise<void> {
+  const cfg = env ?? getS3Env();
+  const command = new DeleteObjectCommand({ Bucket: cfg.bucket, Key: key });
+  await s3.send(command);
+}
+
+export async function deleteObjectKeyWithRetry(
+  key: string,
+  opts: { timeoutMs?: number; maxAttempts?: number; onAttempt?: (info: { attempt: number; success: boolean; err?: any }) => void } = {}
+): Promise<{ ok: boolean; attempts: number; error?: Error }> {
+  const cfg = env ?? getS3Env();
+  const timeoutMs = Math.max(1, opts.timeoutMs ?? 3000);
+  const maxAttempts = Math.max(1, opts.maxAttempts ?? 3);
+
+  let attempts = 0;
+  let lastError: any;
+  for (let i = 0; i < maxAttempts; i++) {
+    attempts = i + 1;
+    const command = new DeleteObjectCommand({ Bucket: cfg.bucket, Key: key });
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), timeoutMs);
+    try {
+      await s3.send(command, { abortSignal: ac.signal });
+      clearTimeout(timer);
+      opts.onAttempt?.({ attempt: attempts, success: true });
+      return { ok: true, attempts };
+    } catch (err: any) {
+      clearTimeout(timer);
+      // Treat NoSuchKey as success (S3 delete is idempotent and often returns 204 anyway)
+      const code = err?.name || err?.code || '';
+      if (String(code) === 'NoSuchKey') {
+        opts.onAttempt?.({ attempt: attempts, success: true });
+        return { ok: true, attempts };
+      }
+      lastError = err;
+      opts.onAttempt?.({ attempt: attempts, success: false, err });
+      // Backoff before retry: 200ms, 400ms, 800ms
+      const delayMs = 200 * Math.pow(2, i);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  return { ok: false, attempts, error: lastError };
 }

@@ -41,9 +41,14 @@ export const requireAuthClerk: RequestHandler = (req: Request, res: Response, ne
       return res.status(401).json({ error: 'Missing Bearer token' });
     }
 
-    return jwt.verify(token, getKey, { algorithms: ['RS256'] }, async (err, decoded) => {
+    // Allow small clock skew to avoid NotBeforeError when token nbf is a fraction ahead
+    return jwt.verify(token, getKey, { algorithms: ['RS256'], clockTolerance: 5 }, async (err, decoded) => {
       if (err || !decoded || typeof decoded !== 'object') {
-        logger.warn({ err }, 'JWT verification failed');
+        if ((err as any)?.name === 'NotBeforeError') {
+          logger.warn({ err }, 'JWT verification failed: not active yet (nbf skew)');
+        } else {
+          logger.warn({ err }, 'JWT verification failed');
+        }
         return res.status(401).json({ error: 'Invalid token' });
       }
 

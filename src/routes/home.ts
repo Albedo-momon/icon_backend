@@ -5,7 +5,9 @@ const router = Router();
 
 router.get('/home', async (req, res) => {
   const now = new Date();
-  const limit = 10;
+  const heroLimit = 5;
+  const offersLimit = 10;
+  const laptopsLimit = 10;
   const validityWindow = [
     { OR: [{ validFrom: null }, { validFrom: { lte: now } }] },
     { OR: [{ validTo: null }, { validTo: { gte: now } }] },
@@ -16,19 +18,19 @@ router.get('/home', async (req, res) => {
     prisma.heroBanner.findMany({
       where: { status: 'ACTIVE' },
       orderBy: [{ sortOrder: 'asc' }, { id: 'desc' }],
-      take: limit,
+      take: heroLimit,
     }),
     // Special: public filter — ACTIVE + validity window; order sort ASC, id DESC
     prisma.specialOffer.findMany({
       where: { status: 'ACTIVE', AND: validityWindow },
       orderBy: [{ sortOrder: 'asc' }, { id: 'desc' }],
-      take: limit,
+      take: offersLimit,
     }),
     // Laptop: public filter — ACTIVE only; order sort ASC, id DESC
     prisma.laptopOffer.findMany({
       where: { status: 'ACTIVE' },
       orderBy: [{ sortOrder: 'asc' }, { id: 'desc' }],
-      take: limit,
+      take: laptopsLimit,
     }),
   ]);
 

@@ -152,9 +152,14 @@ router.post('/auth/handshake', async (req, res) => {
         });
       }
 
-      jwt.verify(token, getKey, { algorithms: ['RS256'] }, async (err: any, decoded: any) => {
+      // Allow small clock skew to avoid NotBeforeError when token nbf is slightly ahead
+      jwt.verify(token, getKey, { algorithms: ['RS256'], clockTolerance: 5 }, async (err: any, decoded: any) => {
         if (err || !decoded || typeof decoded !== 'object') {
-          logger.warn({ err }, 'Handshake JWT verification failed');
+          if (err?.name === 'NotBeforeError') {
+            logger.warn({ err }, 'Handshake JWT verification failed: not active yet (nbf skew)');
+          } else {
+            logger.warn({ err }, 'Handshake JWT verification failed');
+          }
           return res.status(401).json(formatError('INVALID_TOKEN', 'Invalid token'));
         }
 
