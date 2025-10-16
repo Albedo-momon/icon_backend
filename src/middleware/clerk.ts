@@ -4,6 +4,7 @@ import jwksClient from 'jwks-rsa';
 import { prisma } from '../db/prisma';
 import { logger } from '../config/logger';
 import { authConfig } from '../config/auth';
+import { fetchClerkUserInfo } from '../lib/clerk';
 
 const jwksUri = authConfig.clerkJwksUrl;
 if (authConfig.isClerk() && !jwksUri) {
@@ -40,21 +41,35 @@ export const requireAuthClerk: RequestHandler = (req: Request, res: Response, ne
       return res.status(401).json({ error: 'Missing Bearer token' });
     }
 
-    return jwt.verify(token, getKey, { algorithms: ['RS256'] }, async (err, decoded) => {
+    // Allow small clock skew to avoid NotBeforeError when token nbf is a fraction ahead
+    return jwt.verify(token, getKey, { algorithms: ['RS256'], clockTolerance: 5 }, async (err, decoded) => {
       if (err || !decoded || typeof decoded !== 'object') {
-        logger.warn({ err }, 'JWT verification failed');
+        if ((err as any)?.name === 'NotBeforeError') {
+          logger.warn({ err }, 'JWT verification failed: not active yet (nbf skew)');
+        } else {
+          logger.warn({ err }, 'JWT verification failed');
+        }
         return res.status(401).json({ error: 'Invalid token' });
       }
 
-      const emailVerified = (decoded as any).email_verified;
-      const email = (decoded as any).email as string | undefined;
-      const name = (decoded as any).name as string | undefined;
+      let email = (decoded as any).email as string | undefined;
+      let name = (decoded as any).name as string | undefined;
       const externalId = (decoded as any).sub as string | undefined;
 
-      if (!emailVerified) {
-        return res.status(401).json({ error: 'Email not verified' });
+      if (!externalId) {
+        return res.status(401).json({ error: 'Missing required claims' });
       }
-      if (!email || !externalId) {
+
+      // Fallback: fetch email/name from Clerk if not present in JWT
+      if (!email) {
+        const info = await fetchClerkUserInfo(externalId);
+        if (info) {
+          email = info.email ?? email;
+          name = info.name ?? name;
+        }
+      }
+
+      if (!email) {
         return res.status(401).json({ error: 'Missing required claims' });
       }
 

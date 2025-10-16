@@ -152,6 +152,7 @@ router.patch('/:id', async (req, res) => {
 
     const updated = await prisma.laptopOffer.update({ where: { id }, data });
     req.log?.info({ id }, 'admin:laptop:update:ok');
+    // TODO: Phase 2 — when imageUrl is replaced, call maybeDeleteOldAsset('laptop', oldUrl, { laptopId: id }) after successful update
     return res.json(updated);
   } catch (err: any) {
     req.log?.error({ id, err }, 'admin:laptop:update:fail');

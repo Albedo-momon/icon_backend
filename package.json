@@ -4,7 +4,7 @@
   "description": "Production-grade Node.js/Express API for Icon Computers",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "cross-env NODE_ENV=development AUTH_MODE=native ts-node-dev --respawn --transpile-only src/server.ts",
+    "dev": "cross-env NODE_ENV=development ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc -p .",
     "start": "node dist/server.js",
     "prisma": "prisma",

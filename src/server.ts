@@ -20,6 +20,7 @@ import { requireAdmin } from './middleware/requireAdmin';
 import { requireAuth } from './middleware/requireAuth';
 import { formatError } from './utils/errors';
 import listEndpoints from 'express-list-endpoints';
+import { isS3Configured } from './lib/s3';
 
 const app = express();
 
@@ -73,6 +74,18 @@ try {
   logger.info({ endpoints }, 'ROUTES registered');
 } catch (e) {
   logger.warn({ error: (e as Error).message }, 'Failed to list endpoints');
+}
+
+// Boot-time S3 config validation
+try {
+  const s3ok = isS3Configured();
+  if (s3ok) {
+    logger.info({ s3: 'configured' }, 'S3 configuration validated');
+  } else {
+    logger.warn({ s3: 'missing' }, 'S3 configuration missing or invalid');
+  }
+} catch (e: any) {
+  logger.warn({ s3: 'error', error: e?.message }, 'S3 configuration validation error');
 }
 
 // Debug: list routes via internal router stack (Express 5 may not support external libs)

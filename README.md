@@ -295,6 +295,32 @@ This is a base setup with health checks and CMS endpoints. Additional features l
   - `requireAuth` verifies Clerk JWT via JWKS and upserts users
   - `/auth/*` routes respond `405` with `{error:"Use Clerk"}`
   - No change to production Clerk flow
+
+### Frontend Authentication Flow
+
+For frontend teams integrating with this backend:
+
+#### Clerk Mode (Production)
+1. **Client Authentication**: Use Clerk's client SDK to authenticate users and obtain a JWT token
+2. **Handshake**: Call `POST /auth/handshake` with `Authorization: Bearer <clerk_jwt>` to:
+   - Verify the Clerk JWT
+   - Perform idempotent user upsert in the database
+   - Set default role as `USER` for new users
+   - Update email/name on subsequent calls without changing role
+   - Returns: `{ user: { id, email, role, name } }`
+3. **User Profile**: Call `GET /me` with the same JWT to get the current user's database profile
+4. **Protected Routes**: Include `Authorization: Bearer <clerk_jwt>` header for all protected API calls
+
+#### Native Mode (Development)
+1. **Registration/Login**: Use `/auth/user/register` or `/auth/user/login` to get a JWT token
+2. **Handshake**: Call `POST /auth/handshake` with `Authorization: Bearer <native_jwt>` to verify token and get user info
+3. **User Profile**: Call `GET /me` with the same JWT to get the current user's database profile
+4. **Protected Routes**: Include `Authorization: Bearer <native_jwt>` header for all protected API calls
+
+#### Admin Authorization
+- Admin routes (`/admin/*`) require `ADMIN` role in addition to valid authentication
+- Role changes can only be performed by existing admins via role management endpoints
+- The `/auth/handshake` endpoint never changes existing user roles
 ## Database Setup (Local)
 
 - Put `DATABASE_URL` in `icon-backend/.env` (Prisma CLI reads this file only). Do not change runtime layered envs (`.env.local`, `.env.development`). Example:

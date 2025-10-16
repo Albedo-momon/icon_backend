@@ -3,6 +3,7 @@ import { z } from 'zod';
 const authEnvSchema = z.object({
   AUTH_MODE: z.enum(['clerk', 'native']).default('clerk'),
   CLERK_JWKS_URL: z.string().optional(),
+  CLERK_SECRET_KEY: z.string().optional(),
   ADMIN_BOOTSTRAP_SECRET: z.string().optional(),
   JWT_SECRET: z.string().optional(),
 });
@@ -21,6 +22,7 @@ export type AuthMode = 'clerk' | 'native';
 export const authConfig = {
   mode: (authEnv.AUTH_MODE ?? 'clerk') as AuthMode,
   clerkJwksUrl: authEnv.CLERK_JWKS_URL,
+  clerkSecretKey: authEnv.CLERK_SECRET_KEY,
   adminBootstrapSecret: authEnv.ADMIN_BOOTSTRAP_SECRET,
   jwtSecret: authEnv.JWT_SECRET,
   isClerk(): boolean {
