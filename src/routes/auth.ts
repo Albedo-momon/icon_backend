@@ -158,11 +158,29 @@ router.post('/auth/handshake', async (req, res) => {
           return res.status(401).json(formatError('INVALID_TOKEN', 'Invalid token'));
         }
 
-        const email = decoded.email as string | undefined;
-        const name = decoded.name as string | undefined;
+        let email = decoded.email as string | undefined;
+        let name = decoded.name as string | undefined;
         const externalId = decoded.sub as string | undefined;
 
-        if (!email || !externalId) {
+        if (!externalId) {
+          return res.status(401).json(formatError('MISSING_CLAIMS', 'Missing required claims'));
+        }
+
+        // Fallback: fetch email/name from Clerk if not present in JWT
+        if (!email) {
+          try {
+            const { fetchClerkUserInfo } = await import('../lib/clerk');
+            const info = await fetchClerkUserInfo(externalId);
+            if (info) {
+              email = info.email ?? email;
+              name = info.name ?? name;
+            }
+          } catch (e) {
+            logger.warn({ e }, 'Failed to load Clerk helper');
+          }
+        }
+
+        if (!email) {
           return res.status(401).json(formatError('MISSING_CLAIMS', 'Missing required claims'));
         }
 

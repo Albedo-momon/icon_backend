@@ -4,6 +4,7 @@ import jwksClient from 'jwks-rsa';
 import { prisma } from '../db/prisma';
 import { logger } from '../config/logger';
 import { authConfig } from '../config/auth';
+import { fetchClerkUserInfo } from '../lib/clerk';
 
 const jwksUri = authConfig.clerkJwksUrl;
 if (authConfig.isClerk() && !jwksUri) {
@@ -46,11 +47,24 @@ export const requireAuthClerk: RequestHandler = (req: Request, res: Response, ne
         return res.status(401).json({ error: 'Invalid token' });
       }
 
-      const email = (decoded as any).email as string | undefined;
-      const name = (decoded as any).name as string | undefined;
+      let email = (decoded as any).email as string | undefined;
+      let name = (decoded as any).name as string | undefined;
       const externalId = (decoded as any).sub as string | undefined;
 
-      if (!email || !externalId) {
+      if (!externalId) {
+        return res.status(401).json({ error: 'Missing required claims' });
+      }
+
+      // Fallback: fetch email/name from Clerk if not present in JWT
+      if (!email) {
+        const info = await fetchClerkUserInfo(externalId);
+        if (info) {
+          email = info.email ?? email;
+          name = info.name ?? name;
+        }
+      }
+
+      if (!email) {
         return res.status(401).json({ error: 'Missing required claims' });
       }
 
