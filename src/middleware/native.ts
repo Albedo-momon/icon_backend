@@ -4,12 +4,13 @@ import bcrypt from 'bcrypt';
 import { prisma } from '../db/prisma';
 import { logger } from '../config/logger';
 import { authConfig } from '../config/auth';
+import { getAuthMode } from '../config/authMode';
 
 const jwtSecret = authConfig.jwtSecret;
 
 export async function requireAuthNative(req: Request, res: Response, next: NextFunction) {
   try {
-    if (!authConfig.isNative()) return res.status(500).json({ error: 'Native auth disabled' });
+    if (getAuthMode() !== 'native') return res.status(500).json({ error: 'Native auth disabled' });
 
     const auth = req.headers.authorization || '';
     const [scheme, token] = auth.split(' ');

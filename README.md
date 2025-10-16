@@ -107,6 +107,48 @@ scripts/
 ### CMS
 - `GET /cms` - Returns active banners, offers, and products with date filtering
 
+### Admin CMS
+- Auth: `requireAuth` + `requireRole('ADMIN')`
+- Error format: `{ error: { code, message, details? } }`
+
+- Hero Banners
+  - `GET /admin/hero-banners` — filters: `status?`, `q?` (case-insensitive in `title`), supports `limit`/`offset`. Sorting fixed: `sortOrder ASC`, `id DESC`. Returns `{ items, total, limit, offset }`.
+  - `GET /admin/hero-banners/:id` — returns 404 if missing.
+  - `POST /admin/hero-banners` — body `{ title:string(min1), imageUrl:httpsUrl, status:'ACTIVE'|'INACTIVE', sort?:int>=0 }`.
+    - Validations: `title` required, `imageUrl` must be `https://`, `status` defaults `ACTIVE`, `sort` defaults `0`.
+  - `PATCH /admin/hero-banners/:id` — body fields optional; same constraints. `sort` maps to `sortOrder`.
+  - `DELETE /admin/hero-banners/:id` — hard delete; returns `204`.
+
+### Public
+- `GET /hero-banners` — `status='ACTIVE'`, sorting `sortOrder ASC`, `id DESC`, supports `limit/offset`, returns array only.
+
+- Special Offers
+  - `GET /admin/special-offers` — filter by `status`, supports `limit`/`offset` and sorting.
+  - `POST /admin/special-offers` — body `{ imageUrl, productName, priceCents, discountedCents, discountPercent?, status?, sortOrder?, validFrom?, validTo? }`.
+    - Validations: `imageUrl`, `productName`, `priceCents`, `discountedCents` required; `discountedCents ≤ priceCents`.
+    - `discountPercent`:
+      - If absent → computed as `((price - discounted)/price) * 100` and stored.
+      - If present → cross-checked against computed value with ±1% tolerance; otherwise `400`.
+  - `PATCH /admin/special-offers/:id` — partial update; when only `discountPercent` provided, cross-check against current `priceCents/discountedCents` with ±1% tolerance.
+  - `DELETE /admin/special-offers/:id` — soft delete.
+
+- Laptop Offers
+  - Same rules as Special Offers under `/admin/laptop-offers`.
+
+### Home Aggregator
+- `GET /home`
+- Returns:
+  ```json
+  { "heroBanners": [...], "specialOffers": [...], "laptopOffers": [...] }
+  ```
+- Filters:
+  - `heroBanners`: `status='ACTIVE'`
+  - `specialOffers`: `status='ACTIVE'` + current validity window
+  - `laptopOffers`: `status='ACTIVE'`
+- Sorting: `sortOrder ASC`, `id DESC` across all three sections.
+- Limits: fixed `limit=10` for each section.
+- Logging: emits `req.log.info({ counts }, 'home:ok')` with section counts.
+
 ## Media uploads (S3)
 
 Endpoint: `POST /uploads/presign` (ADMIN only)
@@ -145,6 +187,16 @@ Admin CMS endpoints accept `imageUrl`:
 - `/admin/hero-banners` → `imageUrl` (string)
 - `/admin/special-offers` → `imageUrl`, pricing fields
 - `/admin/laptop-offers` → `imageUrl`, pricing fields
+
+Client usage:
+- Call `POST /uploads/presign` (ADMIN), then `PUT` the file to `uploadUrl`.
+- Use returned `publicUrl` in `imageUrl` for create/update payloads.
+
+### Route Map & Startup
+- Routers mounted:
+  - Protected: `/admin` with sub-routes: `/admin/hero-banners`, `/admin/special-offers`, `/admin/laptop-offers` (behind `requireAuth` + `requireAdmin`).
+  - Public: `/hero-banners`, `/special-offers`, `/laptop-offers`, `/home`, `/cms`, `/healthz`.
+- Startup prints route list via `express-list-endpoints` and `/__debug/routes` helper.
 
 
 ## Database Models
@@ -223,6 +275,16 @@ This is a base setup with health checks and CMS endpoints. Additional features l
   - Call `GET /me` → should return admin profile
   - Call protected endpoints: `POST /uploads/presign`, `GET/POST /admin/*`, `GET /home`
 
+## Tests
+
+- Uses `supertest` to verify admin CRUD and aggregator behavior.
+- Coverage:
+  - Admin access control: non-admin (`x-role: USER`) → `403`.
+  - Hero banners: invalid window (`validFrom ≥ validTo`) → `400`.
+  - Special offers: `discountPercent` checked against computed value with ±1% tolerance on create and patch.
+  - Home: enforces section limits via `take` and returns `200`.
+
+
 ## Auth Modes
 
 - Native:
@@ -233,3 +295,35 @@ This is a base setup with health checks and CMS endpoints. Additional features l
   - `requireAuth` verifies Clerk JWT via JWKS and upserts users
   - `/auth/*` routes respond `405` with `{error:"Use Clerk"}`
   - No change to production Clerk flow
+## Database Setup (Local)
+
+- Put `DATABASE_URL` in `icon-backend/.env` (Prisma CLI reads this file only). Do not change runtime layered envs (`.env.local`, `.env.development`). Example:
+  - `DATABASE_URL=postgres://<user>:<pass>@<host>:<port>/<db_name>`
+- Verify connectivity and migration status:
+  - `npx prisma migrate status`
+- Apply migrations and seed (non-destructive):
+  - `npx prisma migrate dev`
+  - `npx prisma db seed`
+- Or do a clean reset (dev only, drops DB then re-applies and seeds):
+  - `npx prisma migrate reset`
+- Seeded admin (native auth):
+  - `admin@local.dev` / `Admin@123`
+  - In Clerk mode, the admin user row is still created with role `ADMIN` but without a password hash.
+- Note: Prisma CLI loads from `.env`; your server runtime continues to use layered envs.
+
+### Quick Verification (SQL)
+
+- Run in your SQL tool against the same DB:
+  - `SELECT current_database();`
+  - `SELECT COUNT(*) AS users FROM users;`
+  - `SELECT COUNT(*) AS heroes FROM hero_banners;`
+  - `SELECT COUNT(*) AS specials FROM special_offers;`
+  - `SELECT COUNT(*) AS laptops FROM laptop_offers;`
+  - `SELECT id,email,role FROM users WHERE email='admin@local.dev';`
+- Expect at least one `ADMIN` user and demo CMS rows if seeds are enabled.
+
+### Health Check
+
+- A basic health endpoint is available:
+  - `GET /healthz` → `{"ok":true,"db":true}`
+- It performs a trivial DB query via Prisma to confirm connectivity.

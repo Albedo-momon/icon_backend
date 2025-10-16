@@ -9,6 +9,7 @@ import { logger } from '../config/logger';
 const router = Router();
 
 router.post('/presign', requireAuth, requireRole('ADMIN'), async (req: Request, res: Response) => {
+  (req as any).log?.debug({}, 'uploads:presign:enter');
   const parsed = PresignBodySchema.safeParse(req.body);
   if (!parsed.success) {
     const hasContentTypeIssue = parsed.error.issues.some((i) => i.path.join('.') === 'contentType');
@@ -26,9 +27,11 @@ router.post('/presign', requireAuth, requireRole('ADMIN'), async (req: Request, 
     const expiresIn = 300;
     const uploadUrl = await presignPutUrl({ key, contentType, expiresInSec: expiresIn });
     const publicUrl = `${getS3PublicBase()}/${key}`;
+    (req as any).log?.info({ key }, 'uploads:presign:success');
     return res.json({ uploadUrl, publicUrl, key, expiresIn });
   } catch (error: any) {
     logger.error({ error }, 'Presign upload failed');
+    (req as any).log?.error({ error: error?.message }, 'uploads:presign:error');
     const msg = typeof error?.message === 'string' && error.message.includes('Missing environment variable')
       ? 'S3 configuration missing'
       : 'Failed to presign upload';
