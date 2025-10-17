@@ -46,8 +46,8 @@ model SpecialOffer {
   id              String   @id @default(uuid())
   imageUrl        String
   productName     String
-  priceCents      Int
-  discountedCents Int
+  price           Int
+  discounted      Int
   discountPercent Int
   status          String   @default("ACTIVE")
   sortOrder       Int      @default(0)
@@ -61,8 +61,8 @@ model LaptopOffer {
   id              String   @id @default(uuid())
   imageUrl        String
   productName     String
-  priceCents      Int
-  discountedCents Int
+  price           Int
+  discounted      Int
   discountPercent Int
   status          String   @default("ACTIVE")
   sortOrder       Int      @default(0)

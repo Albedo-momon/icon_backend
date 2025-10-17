@@ -110,7 +110,7 @@ router.post('/auth/admin/login', async (req, res) => {
 });
 
 // Handshake route for explicit user upsert (both mobile and admin clients)
-router.post('/auth/handshake', async (req, res) => {
+router.post('/auth/handshake', async (req, res): Promise<void> => {
   const mode = getAuthMode();
   (req as any).log?.debug({ mode }, 'auth:handshake:enter');
 
@@ -120,7 +120,8 @@ router.post('/auth/handshake', async (req, res) => {
       const auth = req.headers.authorization || '';
       const [scheme, token] = auth.split(' ');
       if (scheme !== 'Bearer' || !token) {
-        return res.status(401).json(formatError('UNAUTHORIZED', 'Missing Bearer token'));
+        res.status(401).json(formatError('UNAUTHORIZED', 'Missing Bearer token'));
+        return;
       }
 
       // Use the same JWT verification logic as requireAuthClerk
@@ -130,7 +131,8 @@ router.post('/auth/handshake', async (req, res) => {
 
       const jwksUri = authConfig.clerkJwksUrl;
       if (!jwksUri) {
-        return res.status(500).json(formatError('INTERNAL_ERROR', 'JWKS URL not configured'));
+        res.status(500).json(formatError('INTERNAL_ERROR', 'JWKS URL not configured'));
+        return;
       }
 
       const client = jwksClient({
@@ -225,70 +227,78 @@ router.post('/auth/handshake', async (req, res) => {
         }
 
         (req as any).log?.info({ userId: user.id, role: user.role }, 'auth:handshake:clerk:success');
-        res.json({ 
-          user: { 
-            id: user.id, 
-            email: user.email, 
-            role: user.role, 
-            name: user.name 
-          } 
+        res.json({
+          user: {
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            name: user.name
+          }
         });
+        return;
       });
     } catch (error) {
       logger.error({ error }, 'Handshake Clerk error');
       res.status(500).json(formatError('INTERNAL_ERROR', 'Handshake failed'));
+      return;
     }
-  } else {
-    // Native mode: verify JWT and return user info
-    try {
-      const auth = req.headers.authorization || '';
-      const [scheme, token] = auth.split(' ');
-      if (scheme !== 'Bearer' || !token) {
-        return res.status(401).json(formatError('UNAUTHORIZED', 'Missing Bearer token'));
-      }
+   } else {
+     // Native mode: verify JWT and return user info
+     try {
+       const auth = req.headers.authorization || '';
+       const [scheme, token] = auth.split(' ');
+       if (scheme !== 'Bearer' || !token) {
+         res.status(401).json(formatError('UNAUTHORIZED', 'Missing Bearer token'));
+         return;
+       }
 
-      if (!authConfig.jwtSecret) {
-        return res.status(500).json(formatError('INTERNAL_ERROR', 'JWT_SECRET not configured'));
-      }
+       if (!authConfig.jwtSecret) {
+         res.status(500).json(formatError('INTERNAL_ERROR', 'JWT_SECRET not configured'));
+         return;
+       }
 
-      const jwt = require('jsonwebtoken');
-      let decoded: any;
-      try {
-        decoded = jwt.verify(token, authConfig.jwtSecret, { algorithms: ['HS256'] });
-      } catch (err) {
-        logger.warn({ err }, 'Native handshake JWT verification failed');
-        return res.status(401).json(formatError('INVALID_TOKEN', 'Invalid token'));
-      }
+        const jwt = require('jsonwebtoken');
+        let decoded: any;
+        try {
+          decoded = jwt.verify(token, authConfig.jwtSecret, { algorithms: ['HS256'] });
+        } catch (err) {
+          logger.warn({ err }, 'Native handshake JWT verification failed');
+         res.status(401).json(formatError('INVALID_TOKEN', 'Invalid token'));
+         return;
+        }
 
-      const userId = decoded.uid || decoded.sub;
-      const email = decoded.email as string | undefined;
+       const userId = decoded.uid || decoded.sub;
+       const email = decoded.email as string | undefined;
 
-      let user = null;
-      if (userId) {
-        user = await prisma.user.findUnique({ where: { id: userId } });
-      }
-      if (!user && email) {
-        user = await prisma.user.findUnique({ where: { email } });
-      }
+       let user = null;
+       if (userId) {
+         user = await prisma.user.findUnique({ where: { id: userId } });
+       }
+       if (!user && email) {
+         user = await prisma.user.findUnique({ where: { email } });
+       }
 
-      if (!user) {
-        return res.status(401).json(formatError('USER_NOT_FOUND', 'User not found'));
-      }
+       if (!user) {
+         res.status(401).json(formatError('USER_NOT_FOUND', 'User not found'));
+         return;
+         }
 
-      (req as any).log?.info({ userId: user.id, role: user.role }, 'auth:handshake:native:success');
-      res.json({ 
-        user: { 
-          id: user.id, 
-          email: user.email, 
-          role: user.role, 
-          name: user.name 
-        } 
+        (req as any).log?.info({ userId: user.id, role: user.role }, 'auth:handshake:native:success');
+      res.json({
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          name: user.name
+        }
       });
-    } catch (error) {
-      logger.error({ error }, 'Handshake native error');
+      return;
+     } catch (error) {
+       logger.error({ error }, 'Handshake native error');
       res.status(500).json(formatError('INTERNAL_ERROR', 'Handshake failed'));
-    }
-  }
-});
+      return;
+     }
+   }
+ });
 
-export default router;
+ export default router;

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../db/prisma';
+import { addISTFields } from '../utils/time';
 
 const router = Router();
 
@@ -40,7 +41,12 @@ router.get('/home', async (req, res) => {
     laptopOffers: laptopOffers.length,
   };
   req.log?.info({ counts }, 'home:ok');
-  res.json({ heroBanners, specialOffers, laptopOffers });
+
+  const heroBannersIST = heroBanners.map(i => addISTFields(i, ['createdAt', 'updatedAt']));
+  const specialOffersIST = specialOffers.map(i => addISTFields(i, ['createdAt', 'updatedAt']))
+  const laptopOffersIST = laptopOffers.map(i => addISTFields(i, ['createdAt', 'updatedAt']))
+
+  res.json({ heroBanners: heroBannersIST, specialOffers: specialOffersIST, laptopOffers: laptopOffersIST });
 });
 
 export default router;

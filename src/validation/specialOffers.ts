@@ -12,7 +12,7 @@ const dateString = z.union([
 ]);
 
 export const specialOfferCreateSchema = z.object({
-  name: z.string().min(1),
+  productName: z.string().min(1),
   imageUrl: httpsUrl,
   price: z.number().int().positive(),
   discounted: z.number().int().min(0),
@@ -35,7 +35,7 @@ export const specialOfferCreateSchema = z.object({
 });
 
 export const specialOfferUpdateSchema = z.object({
-  name: z.string().min(1).optional(),
+  productName: z.string().min(1).optional(),
   imageUrl: httpsUrl.optional(),
   price: z.number().int().positive().optional(),
   discounted: z.number().int().min(0).optional(),
