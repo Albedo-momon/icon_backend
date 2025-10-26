@@ -1,0 +1,73 @@
+// Icon Backend simplified Prisma schema for auth and CMS
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  AGENT
+  ADMIN
+}
+
+model User {
+  id          String   @id @default(uuid())
+  externalId  String?  @unique
+  email       String   @unique
+  name        String?
+  passwordHash String?
+  mobileNum   String?
+  role        Role     @default(USER)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model HeroBanner {
+  id          String   @id @default(uuid())
+  imageUrl    String
+  title       String?
+  subtitle    String?
+  ctaText     String?
+  ctaLink     String?
+  status      String   @default("ACTIVE")
+  sortOrder   Int      @default(0)
+  validFrom   DateTime?
+  validTo     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SpecialOffer {
+  id              String   @id @default(uuid())
+  imageUrl        String
+  productName     String
+  price           Int
+  discounted      Int
+  discountPercent Int
+  status          String   @default("ACTIVE")
+  sortOrder       Int      @default(0)
+  validFrom       DateTime?
+  validTo         DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model LaptopOffer {
+  id              String   @id @default(uuid())
+  imageUrl        String
+  productName     String
+  price           Int
+  discounted      Int
+  discountPercent Int
+  status          String   @default("ACTIVE")
+  sortOrder       Int      @default(0)
+  validFrom       DateTime?
+  validTo         DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

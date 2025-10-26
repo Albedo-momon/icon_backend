@@ -8,7 +8,7 @@ const httpsUrl = z.string().url().refine((u) => u.startsWith('https://'), {
 // Block D DTOs
 export const laptopOfferCreateSchema = z.object({
   model: z.string().min(1),
-  imageUrl: httpsUrl.optional(),
+  imageUrl: httpsUrl,
   price: z.number().int().positive(),
   discounted: z.number().int().min(0),
   status: z.enum(['ACTIVE', 'INACTIVE']).default('ACTIVE'),

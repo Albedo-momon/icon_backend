@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../db/prisma';
 import { logger } from '../config/logger';
+import { addISTFields } from '../utils/time';
 
 const router = Router();
 
@@ -55,7 +56,11 @@ router.get('/cms', async (req, res) => {
       'CMS data retrieved'
     );
 
-    res.json({ banners, offers, laptops });
+    const bannersIST = banners.map(i => addISTFields(i, ['createdAt', 'updatedAt']));
+    const offersIST = offers.map(i => addISTFields(i, ['createdAt', 'updatedAt']));
+    const laptopsIST = laptops.map(i => addISTFields(i, ['createdAt', 'updatedAt']));
+
+    res.json({ banners: bannersIST, offers: offersIST, laptops: laptopsIST });
   } catch (error) {
     logger.error({ error }, 'Failed to retrieve CMS data');
     res.status(500).json({ error: 'Failed to retrieve CMS data' });

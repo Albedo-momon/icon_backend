@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { prisma } from '../../db/prisma';
-import { formatError } from '../../utils/errors';
+import { formatError, formatZodError } from '../../utils/errors';
 import { parsePagination } from '../../utils/api';
 import { parseOrThrow } from '../../validation';
-import { specialOfferCreateSchema, specialOfferUpdateSchema } from '../../validation/specialOffers';
-import { specialOfferSchema } from '../../validation/schemas';
+import { specialOfferCreateSchema, specialOfferUpdateSchema, type SpecialOfferCreate, type SpecialOfferUpdate } from '../../validation/specialOffers';
+import { toDbDate, addISTFields } from '../../utils/time';
+import { maybeDeleteOldAsset, extractS3Key } from '../../lib/assets';
+import { deleteObjectKeyWithRetry } from '../../lib/s3';
 
 const router = Router();
 
@@ -25,6 +27,7 @@ function validityWhere(now: Date) {
   } as const;
 }
 
+
 // List (admin): status?, activeNow?=true|false; pagination; order sort ASC, id DESC
 router.get('/', async (req, res) => {
   const { status, activeNow } = req.query as { status?: string; activeNow?: string };
@@ -44,84 +47,11 @@ router.get('/', async (req, res) => {
       prisma.specialOffer.count({ where }),
     ]);
     req.log?.info({ count: items.length, total }, 'admin:special:list:ok');
-    return res.json({ items, total, limit, offset });
+    const itemsWithIST = items.map(i => addISTFields(i, ['createdAt', 'updatedAt']));
+    return res.json({ items: itemsWithIST, total, limit, offset });
   } catch (err) {
     req.log?.error({ err }, 'admin:special:list:fail');
     return res.status(500).json(formatError('INTERNAL_ERROR', 'Failed to list special offers'));
-  }
-});
-
-// Create (admin): supports Block C DTO; falls back to legacy schema for compatibility
-router.post('/', async (req, res) => {
-  req.log?.info({}, 'admin:special:create:enter');
-  try {
-    // Enforce imageUrl presence with clear error (non-empty)
-    if (!Object.prototype.hasOwnProperty.call(req.body, 'imageUrl') || !String(req.body.imageUrl || '').trim()) {
-      req.log?.warn?.({ keys: Object.keys(req.body) }, 'admin:special:create:reject:image_required');
-      return res.status(400).json(formatError('VALIDATION_ERROR', 'imageUrl is required'));
-    }
-    // Try new DTO first
-    let dto: any;
-    let isNew = false;
-    const parsedNew = specialOfferCreateSchema.safeParse(req.body);
-    if (parsedNew.success) {
-      dto = parsedNew.data;
-      isNew = true;
-    } else {
-      dto = parseOrThrow(specialOfferSchema, req.body);
-    }
-
-    if (isNew) {
-      const name: string = dto.name;
-      const price: number = dto.price;
-      const discounted: number = dto.discounted;
-      const status: string = dto.status;
-      const imageUrl: string = dto.imageUrl;
-      const discountPercent = computeDiscountPercentFloor(price, discounted);
-      const created = await prisma.specialOffer.create({
-        data: {
-          productName: name,
-          imageUrl,
-          priceCents: price,
-          discountedCents: discounted,
-          discountPercent,
-          status,
-          validFrom: dto.validFrom ? new Date(dto.validFrom) : null,
-          validTo: dto.validTo ? new Date(dto.validTo) : null,
-        },
-      });
-      req.log?.info({ id: created.id }, 'admin:special:create:ok');
-      return res.status(201).json(created);
-    } else {
-      // Legacy payload path: verify discounted ≤ price and compute/check percent with ±1% tolerance
-      const data = dto;
-      // Enforce https for legacy payloads as well
-      if (!String(data.imageUrl).startsWith('https://')) {
-        req.log?.warn?.({ imageUrl: data.imageUrl }, 'admin:special:create:reject:image_https_required');
-        return res.status(400).json(formatError('VALIDATION_ERROR', 'imageUrl must be https'));
-      }
-      if (data.discountedCents > data.priceCents) {
-        return res.status(400).json(formatError('VALIDATION_ERROR', 'discountedCents must be ≤ priceCents'));
-      }
-      const computed = computeDiscountPercentFloor(data.priceCents, data.discountedCents);
-      if (data.discountPercent != null && Math.abs(data.discountPercent - computed) > 1) {
-        return res.status(400).json(formatError('VALIDATION_ERROR', 'discountPercent inconsistent with price/discount (±1%)'));
-      }
-      const created = await prisma.specialOffer.create({
-        data: {
-          ...data,
-          validFrom: data.validFrom ? new Date(data.validFrom) : null,
-          validTo: data.validTo ? new Date(data.validTo) : null,
-          discountPercent: computed,
-        },
-      });
-      req.log?.info({ id: created.id }, 'admin:special:create:ok');
-      return res.status(201).json(created);
-    }
-  } catch (err: any) {
-    const status = err?.code === 'BAD_REQUEST' ? 400 : 500;
-    req.log?.error({ err }, 'admin:special:create:fail');
-    return res.status(status).json(formatError(err?.code || 'INTERNAL_ERROR', err?.message || 'Failed to create special offer', err?.details));
   }
 });
 
@@ -136,14 +66,53 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json(formatError('NOT_FOUND', 'Special offer not found'));
     }
     req.log?.info({ id }, 'admin:special:get:ok');
-    return res.json(item);
+    return res.json(addISTFields(item, ['createdAt', 'updatedAt']));
   } catch (err) {
     req.log?.error({ err, id }, 'admin:special:get:fail');
     return res.status(500).json(formatError('INTERNAL_ERROR', 'Failed to retrieve special offer'));
   }
 });
 
-// Update (admin): recompute discountPercent when price/discounted change; support Block C DTO
+// Create (admin): strict DTO from validation package
+router.post('/', async (req, res) => {
+  req.log?.info({}, 'admin:special:create:enter');
+  try {
+    const parsed = specialOfferCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      req.log?.warn?.({ issues: parsed.error.issues }, 'admin:special:create:validation_error');
+      return res.status(400).json(formatZodError(parsed.error));
+    }
+    const dto: SpecialOfferCreate = parsed.data;
+    const discountPercent = computeDiscountPercentFloor(dto.price, dto.discounted);
+    // If client provided discountPercent, enforce ±1% tolerance against computed
+    if (Object.prototype.hasOwnProperty.call(req.body, 'discountPercent')) {
+      const provided = req.body.discountPercent;
+      if (provided != null && Math.abs(provided - discountPercent) > 1) {
+        return res.status(400).json(formatError('VALIDATION_ERROR', 'discountPercent inconsistent with price/discount (±1%)'));
+      }
+    }
+    const created = await prisma.specialOffer.create({
+      data: {
+        productName: dto.productName,
+        imageUrl: dto.imageUrl,
+        price: dto.price,
+        discounted: dto.discounted,
+        discountPercent,
+        status: dto.status,
+        validFrom: toDbDate(dto.validFrom),
+        validTo: toDbDate(dto.validTo),
+      },
+    });
+    req.log?.info({ id: created.id }, 'admin:special:create:ok');
+    return res.status(201).json(created);
+  } catch (err: any) {
+    const status = err?.code === 'BAD_REQUEST' ? 400 : 500;
+    req.log?.error({ err }, 'admin:special:create:fail');
+    return res.status(status).json(formatError(err?.code || 'INTERNAL_ERROR', err?.message || 'Failed to create special offer', err?.details));
+  }
+});
+
+// Update (admin): recompute discountPercent when price/discounted change; strict DTO
 router.patch('/:id', async (req, res) => {
   const { id } = req.params as { id: string };
   req.log?.info({ id }, 'admin:special:update:enter');
@@ -153,44 +122,26 @@ router.patch('/:id', async (req, res) => {
       req.log?.warn?.({ id }, 'admin:special:update:reject:image_cannot_be_empty');
       return res.status(400).json(formatError('VALIDATION_ERROR', 'imageUrl cannot be empty'));
     }
-    // Try new DTO first; fallback to legacy partial
-    const parsedNew = specialOfferUpdateSchema.safeParse(req.body);
-    const isNew = parsedNew.success;
-    let data: any = {};
 
-    if (isNew) {
-      const dto = parsedNew.data;
-      if (dto.name !== undefined) data.productName = dto.name;
-      if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl;
-      if (dto.status !== undefined) data.status = dto.status;
-      if (dto.validFrom !== undefined) data.validFrom = dto.validFrom ? new Date(dto.validFrom) : null;
-      if (dto.validTo !== undefined) data.validTo = dto.validTo ? new Date(dto.validTo) : null;
-      if (dto.price !== undefined) data.priceCents = dto.price;
-      if (dto.discounted !== undefined) data.discountedCents = dto.discounted;
-    } else {
-      const parsedLegacy = specialOfferSchema.partial().safeParse(req.body);
-      if (!parsedLegacy.success) {
-        return res.status(400).json(formatError('BAD_REQUEST', 'Validation failed', parsedLegacy.error.issues));
-      }
-      const dto = parsedLegacy.data;
-      // If legacy payload provides imageUrl, enforce https
-      if (dto.imageUrl !== undefined && !String(dto.imageUrl).startsWith('https://')) {
-        req.log?.warn?.({ id, imageUrl: dto.imageUrl }, 'admin:special:update:reject:image_https_required');
-        return res.status(400).json(formatError('VALIDATION_ERROR', 'imageUrl must be https'));
-      }
-      data = { ...dto };
-      if (dto.validFrom !== undefined) data.validFrom = dto.validFrom ? new Date(dto.validFrom) : null;
-      if (dto.validTo !== undefined) data.validTo = dto.validTo ? new Date(dto.validTo) : null;
-    }
+    const dto: SpecialOfferUpdate = parseOrThrow(specialOfferUpdateSchema, req.body);
+
+    const data: any = {};
+    if (dto.productName !== undefined) data.productName = dto.productName;
+    if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl;
+    if (dto.status !== undefined) data.status = dto.status;
+    if (dto.validFrom !== undefined) data.validFrom = toDbDate(dto.validFrom)
+    if (dto.validTo !== undefined) data.validTo = toDbDate(dto.validTo)
+    if (dto.price !== undefined) data.price = dto.price;
+    if (dto.discounted !== undefined) data.discounted = dto.discounted;
 
     // Fetch current to recompute discountPercent when necessary
     const current = await prisma.specialOffer.findUnique({ where: { id } });
     if (!current) return res.status(404).json(formatError('NOT_FOUND', 'Offer not found'));
 
-    const price = data.priceCents ?? current.priceCents;
-    const disc = data.discountedCents ?? current.discountedCents;
+    const price = data.price ?? current.price;
+    const disc = data.discounted ?? current.discounted;
     if (disc > price) {
-      return res.status(400).json(formatError('VALIDATION_ERROR', 'discountedCents must be ≤ priceCents'));
+      return res.status(400).json(formatError('VALIDATION_ERROR', 'discounted must be ≤ price'));
     }
     const computed = computeDiscountPercentFloor(price, disc);
     // If client provided discountPercent, enforce ±1% tolerance against computed
@@ -202,24 +153,86 @@ router.patch('/:id', async (req, res) => {
     }
     data.discountPercent = computed;
 
+    // Determine if image will be replaced
+    const incomingImageUrl = dto.imageUrl;
+    const willReplaceImage = typeof incomingImageUrl === 'string' && incomingImageUrl.trim() && incomingImageUrl !== current.imageUrl;
+
     const updated = await prisma.specialOffer.update({ where: { id }, data });
     req.log?.info({ id }, 'admin:special:update:ok');
-    // TODO: Phase 2 — when imageUrl is replaced, call maybeDeleteOldAsset('special', oldUrl, { specialId: id }) after successful update
+
+    // After successful update: attempt asset cleanup if replacement occurred
+    if (willReplaceImage) {
+      const result = await maybeDeleteOldAsset('special', current.imageUrl, { specialId: id });
+      if (result.deleted && result.key) {
+        req.log?.info({ oldKey: result.key }, 'asset:deleted');
+      } else if (result.reason === 'in_use' && result.key) {
+        req.log?.info({ oldKey: result.key }, 'asset:skip_in_use');
+      } else if (result.reason === 'invalid_domain') {
+        req.log?.info({}, 'asset:skip_invalid_domain');
+      } else {
+        req.log?.warn({ oldKey: result.key, err: result.error?.message }, 'asset:delete_failed');
+      }
+    }
+
     return res.json(updated);
   } catch (err: any) {
+    if (err?.code === 'BAD_REQUEST') {
+      req.log?.warn?.({ id, err }, 'admin:special:update:bad_request');
+      return res.status(400).json(formatError('BAD_REQUEST', err?.message || 'Validation failed', err?.details));
+    }
     req.log?.error({ id, err }, 'admin:special:update:fail');
     return res.status(500).json(formatError('INTERNAL_ERROR', 'Failed to update special offer'));
   }
 });
 
-// Delete (admin) — soft delete (set INACTIVE)
+// Delete (admin) — hard delete, attempt S3 cleanup
 router.delete('/:id', async (req, res) => {
   const { id } = req.params as { id: string };
   req.log?.info({ id }, 'admin:special:delete:enter');
   try {
-    const updated = await prisma.specialOffer.update({ where: { id }, data: { status: 'INACTIVE' } });
-    req.log?.info({ id }, 'admin:special:delete:ok');
-    return res.json(updated);
+    // Read row to capture imageUrl before delete
+    const current = await prisma.specialOffer.findUnique({ where: { id } });
+    if (!current) {
+      req.log?.warn?.({ id }, 'admin:special:delete:not_found');
+      return res.status(404).json(formatError('NOT_FOUND', 'Special offer not found'));
+    }
+
+    const oldKey = extractS3Key(current.imageUrl || '');
+
+    // Perform DB delete first (authoritative)
+    await prisma.specialOffer.delete({ where: { id } });
+    req.log?.info({ action: 'special.delete', id, reqId: (req as any).id, dbDeleted: true }, 'admin:special:delete:db_ok');
+
+    let s3Result: { attempted: boolean; deleted: boolean; key: string | null; attempts: number; error?: string } = {
+      attempted: false,
+      deleted: false,
+      key: null,
+      attempts: 0,
+    };
+
+    // Attempt S3 deletion best-effort with retry/backoff
+    if (oldKey) {
+      s3Result.attempted = true;
+      s3Result.key = oldKey;
+      const result = await deleteObjectKeyWithRetry(oldKey, {
+        timeoutMs: 3000,
+        maxAttempts: 3,
+        onAttempt: ({ attempt, success, err }) => {
+          req.log?.info({ action: 's3.delete', key: oldKey, attempt, success, err: err?.message }, 'asset:delete_attempt');
+        },
+      });
+      s3Result.attempts = result.attempts;
+      s3Result.deleted = !!result.ok;
+      if (result.ok) {
+        req.log?.info({ decision: 's3_cleanup_success', key: oldKey }, 'asset:deleted');
+      } else {
+        s3Result.error = result.error?.message || 'S3 delete failed';
+        req.log?.warn({ decision: 's3_cleanup_failed', key: oldKey, err: result.error?.message }, 'asset:delete_failed');
+      }
+    } else {
+      req.log?.info({ decision: 's3_cleanup_unparsable', id }, 'asset:skip_invalid_domain');
+    }
+    return res.status(200).json({ ok: true, id, s3Deleted: !!s3Result.deleted, s3DeleteError: s3Result.attempted ? (s3Result.deleted ? null : (s3Result.error || 's3_delete_failed')) : 'unparsable_or_missing_key' });
   } catch (err) {
     req.log?.error({ id, err }, 'admin:special:delete:fail');
     return res.status(500).json(formatError('INTERNAL_ERROR', 'Failed to delete special offer'));

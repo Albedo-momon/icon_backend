@@ -1,5 +1,3 @@
-// Icon Backend simplified Prisma schema for auth and CMS
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,65 +7,381 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ---- Authoritative Enums (from docs/all-table-enums.txt) ----
+
 enum Role {
   USER
   AGENT
   ADMIN
 }
 
+enum AccountStatus {
+  ACTIVE
+  INACTIVE
+  DELETED
+}
+
+enum OnboardingStatus {
+  PENDING
+  COMPLETED
+}
+
+enum OperationalStatus {
+  FREE
+  BUSY
+}
+
+// Bookings (types & statuses)
+
+// WHERE the service happens (location context)
+
+enum BookingType {
+  ON_SITE // on-site: home/office
+  IN_SHOP // walk-in: at shop
+}
+
+// WHAT is being requested (workflow driver)
+
+enum IssueType {
+  REPAIR // laptops/computers/CCTV/etc.
+  PC_BUILD // custom PC build
+}
+
+enum BookingStatus {
+  // common creation/dispatch
+  PENDING // request created
+  SEARCHING // dispatch engine finding agent
+  SENT_TO_AGENT // offer sent to a specific agent
+  WAITING_AGENT_APPROVAL // offer outstanding
+  AGENT_ACCEPTED
+  ETA_CONFIRMED // ON_SITE only
+
+  DIAGNOSIS_PENDING
+  DIAGNOSIS_STARTED
+  DIAGNOSIS_COMPLETED
+  REPAIR_IN_PROGRESS
+
+  // PC_BUILD phases
+  BUILD_IN_PROGRESS
+  BUILD_DONE
+  SOFTWARE_INSTALL_IN_PROGRESS
+  INSTALLATION_DONE
+  TESTING_QA
+  TESTING_DONE
+
+  // multi-day visit coordination
+  SCHEDULED_NEXT_VISIT // job paused with a nextVisitAt
+
+  // terminal
+  COMPLETED
+  CANCELLED_BY_USER
+  CANCELLED_BY_ADMIN
+  CANCELLED_BY_AGENT
+}
+
+// Service domain taxonomy (for reporting/search)
+
+enum ServiceDomain {
+  COMPUTER
+  LAPTOP
+  CCTV
+  PRINTER
+  NETWORKING
+  OTHER
+}
+
+enum OfferStatus {
+  SENT
+  ACCEPTED
+  REJECTED
+  TIMEOUT
+  CANCELLED
+}
+
+enum EventActorRole {
+  USER // End-customer
+  AGENT // Assigned agent
+  ADMIN // Admin via panel
+  SYSTEM // Automatic/system-triggered (e.g., timeout, auto-cancel)
+}
+
+enum EventKind {
+  CREATED // Booking was created
+  STATUS_CHANGED // Booking moved from one status to another
+  OFFER_CREATED // Offer sent to an agent
+  OFFER_CHANGED // Offer accepted/rejected/timeout
+  AGENT_ASSIGNED // Agent assigned
+  AGENT_REASSIGNED // Agent changed
+  ETA_SET // ETA confirmed
+  SESSION_STARTED // Work session started
+  SESSION_ENDED // Work session ended
+  FEEDBACK_ADDED // Feedback submitted
+  NOTE_ADDED // Admin/agent/user note added
+  PAYMENT_UPDATED // (if later you add payments)
+}
+
+enum PushPlatform {
+  IOS
+  ANDROID
+  WEB
+}
+
+enum NotificationType {
+  BOOKING_CREATED
+  OFFER_SENT
+  OFFER_ACCEPTED
+  OFFER_REJECTED
+  OFFER_TIMEOUT
+  ETA_CONFIRMED
+  DIAGNOSIS_STARTED
+  DIAGNOSIS_COMPLETED
+  REPAIR_IN_PROGRESS
+  BUILD_PHASE_CHANGED
+  COMPLETED
+  CANCELLED
+  NOTE_ADDED
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
+enum SessionStatus {
+  STARTED
+  ENDED
+}
+
+enum PrincipalType {
+  USER
+  AGENT
+  ADMIN
+}
+
+// ---- Authoritative Models (from docs/schema - 1.0.0.txt) ----
+
 model User {
-  id          String   @id @default(uuid())
-  externalId  String?  @unique
-  email       String   @unique
-  name        String?
-  passwordHash String?
-  mobileNum   String?
-  role        Role     @default(USER)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(uuid())
+  clerkId      String?  @unique
+  email        String   @unique
+  name         String
+  avatarUrl    String?
+  passwordHash String? // present when using native auth
+  phone        String?  @unique
+  role         Role
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  bookings     Booking[]      @relation("UserBookings")
+  Agent        Agent?
+  BookingEvent BookingEvent[]
+  Feedback     Feedback[]
+
+  @@index([role])
 }
 
 model HeroBanner {
-  id          String   @id @default(uuid())
-  imageUrl    String
-  title       String?
-  subtitle    String?
-  ctaText     String?
-  ctaLink     String?
-  status      String   @default("ACTIVE")
-  sortOrder   Int      @default(0)
-  validFrom   DateTime?
-  validTo     DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String    @id @default(uuid())
+  imageUrl  String
+  title     String?
+  subtitle  String?
+  ctaText   String?
+  ctaLink   String?
+  status    String    @default("ACTIVE")
+  sortOrder Int       @default(0)
+  validFrom DateTime?
+  validTo   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
 
 model SpecialOffer {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   imageUrl        String
   productName     String
-  priceCents      Int
-  discountedCents Int
+  price           Int
+  discounted      Int
   discountPercent Int
-  status          String   @default("ACTIVE")
-  sortOrder       Int      @default(0)
+  status          String    @default("ACTIVE")
+  sortOrder       Int       @default(0)
   validFrom       DateTime?
   validTo         DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }
 
 model LaptopOffer {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   imageUrl        String
   productName     String
-  priceCents      Int
-  discountedCents Int
+  price           Int
+  discounted      Int
   discountPercent Int
-  status          String   @default("ACTIVE")
-  sortOrder       Int      @default(0)
+  status          String    @default("ACTIVE")
+  sortOrder       Int       @default(0)
   validFrom       DateTime?
   validTo         DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model Agent {
+  id                String            @id @default(uuid())
+  userId            String            @unique
+  accountStatus     AccountStatus     @default(ACTIVE)
+  onboardingStatus  OnboardingStatus  @default(PENDING)
+  operationalStatus OperationalStatus @default(FREE)
+  serviceTags       String[] // PG array or JSON
+  ratingAvg         Decimal           @default(0) @db.Decimal(3, 2)
+  jobsDone          Int               @default(0)
+  sortOrder         Int               @default(0)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  // Relations
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookings Booking[]         @relation("AgentBookings")
+  offers   AssignmentOffer[]
+  sessions JobSession[]
+  Feedback Feedback[]
+
+  @@index([accountStatus, onboardingStatus])
+  @@index([operationalStatus, sortOrder])
+}
+
+model Booking {
+  id                     String        @id @default(uuid())
+  bookingType            BookingType // ON_SITE | IN_SHOP
+  issueType              IssueType // REPAIR | PC_BUILD
+  serviceDomain          ServiceDomain // REQUIRED taxonomy
+  status                 BookingStatus
+  problemNote            String
+  scheduledFor           DateTime?
+  expectedCompletionDate DateTime?
+  etaMinutes             Int?
+  addressLine1           String?
+  city                   String?
+  pincode                String?
+  contactPhone           String?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  // Relations
+  userId String
+  user   User   @relation("UserBookings", fields: [userId], references: [id], onDelete: Restrict)
+
+  agentId String?
+  agent   Agent?  @relation("AgentBookings", fields: [agentId], references: [id], onDelete: SetNull)
+
+  offers   AssignmentOffer[]
+  sessions JobSession[]
+  events   BookingEvent[]
+  feedback Feedback?
+
+  // Search & ops indexes
+  @@index([bookingType, issueType, serviceDomain])
+  @@index([status, createdAt])
+  @@index([agentId, status])
+  @@index([userId, updatedAt])
+}
+
+model AssignmentOffer {
+  id        String      @id @default(uuid())
+  bookingId String
+  agentId   String
+  status    OfferStatus
+  expiresAt DateTime
+  createdAt DateTime    @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  agent   Agent   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, status])
+  @@index([bookingId])
+  @@index([bookingId, status, createdAt])
+}
+
+model JobSession {
+  id        String        @id @default(uuid())
+  bookingId String
+  agentId   String
+  status    SessionStatus
+  startAt   DateTime
+  endAt     DateTime?
+  notes     String?
+  createdAt DateTime      @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  agent   Agent   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, startAt])
+  @@index([agentId, startAt])
+}
+
+model BookingEvent {
+  id         String         @id @default(uuid())
+  bookingId  String
+  fromStatus BookingStatus?
+  toStatus   BookingStatus
+  byUserId   String?
+  byRole     EventActorRole
+  kind       EventKind
+  note       String?
+  createdAt  DateTime       @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  byUser  User?   @relation(fields: [byUserId], references: [id], onDelete: SetNull)
+
+  @@index([bookingId, createdAt])
+  @@index([kind])
+}
+
+model Feedback {
+  id        String   @id @default(uuid())
+  bookingId String   @unique
+  agentId   String
+  userId    String
+  rating    Int // 1..5
+  comment   String?
+  createdAt DateTime @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  agent   Agent   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([userId])
+}
+
+model DeviceToken {
+  id            String        @id @default(uuid())
+  principalType PrincipalType
+  principalId   String
+  platform      PushPlatform
+  token         String        @unique
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([principalType, principalId, platform])
+}
+
+model Notification {
+  id             String           @id @default(uuid())
+  recipientType  PrincipalType
+  recipientId    String?
+  type           NotificationType
+  title          String
+  body           String
+  data           Json?
+  deliveryStatus DeliveryStatus   @default(PENDING)
+  createdAt      DateTime         @default(now())
+  readAt         DateTime?
+  bookingId      String?
+
+  @@index([recipientType, recipientId, createdAt])
+  @@index([bookingId, createdAt])
+  @@index([type, createdAt])
 }

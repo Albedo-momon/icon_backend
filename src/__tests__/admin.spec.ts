@@ -71,7 +71,7 @@ describe('Admin CRUD and Home aggregator', () => {
       .post('/admin/special-offers')
       .set('Authorization', 'Bearer token')
       .set('x-role', 'ADMIN')
-      .send({ imageUrl: 'https://x/img.png', productName: 'X', priceCents: 10000, discountedCents: 5000, discountPercent: 53 });
+      .send({ imageUrl: 'https://x/img.png', name: 'X', price: 10000, discounted: 5000, discountPercent: 53 });
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
 
@@ -80,12 +80,12 @@ describe('Admin CRUD and Home aggregator', () => {
       .post('/admin/special-offers')
       .set('Authorization', 'Bearer token')
       .set('x-role', 'ADMIN')
-      .send({ imageUrl: 'https://x/img.png', productName: 'X', priceCents: 10000, discountedCents: 5000, discountPercent: 51 });
+      .send({ imageUrl: 'https://x/img.png', name: 'X', price: 10000, discounted: 5000, discountPercent: 51 });
     expect(res.status).toBe(201);
   });
 
   it('PATCH special offer cross-checks discountPercent with current values', async () => {
-    prismaFns.specialOffer.findUnique.mockResolvedValue({ id: 'abc', priceCents: 10000, discountedCents: 9000 });
+    prismaFns.specialOffer.findUnique.mockResolvedValue({ id: 'abc', price: 10000, discounted: 9000 });
     prismaFns.specialOffer.update.mockResolvedValue({ id: 'abc' });
 
     // Deviates by >1% from computed 10%

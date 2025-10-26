@@ -6,6 +6,7 @@ import { parseOrThrow } from '../../validation';
 import { heroBannerCreateSchema, heroBannerUpdateSchema } from '../../validation/heroBanners';
 import { maybeDeleteOldAsset, extractS3Key } from '../../lib/assets';
 import { deleteObjectKeyWithRetry } from '../../lib/s3';
+import { addISTFields } from '../../utils/time';
 
 const router = Router();
 
@@ -25,10 +26,29 @@ router.get('/', async (req, res) => {
       prisma.heroBanner.count({ where }),
     ]);
     req.log?.info({ count: items.length, total }, 'admin:hero:list:ok');
-    return res.json({ items, total, limit, offset });
+    const itemsWithIST = items.map(i => addISTFields(i, ['createdAt', 'updatedAt']));
+    return res.json({ items: itemsWithIST, total, limit, offset });
   } catch (err) {
     req.log?.error({ err }, 'admin:hero:list:fail');
     return res.status(500).json(formatError('INTERNAL_ERROR', 'Failed to list hero banners'));
+  }
+});
+
+// Get by id (admin)
+router.get('/:id', async (req, res) => {
+  const { id } = req.params as { id: string };
+  req.log?.info({ id }, 'admin:hero:get:enter');
+  try {
+    const item = await prisma.heroBanner.findUnique({ where: { id } });
+    if (!item) {
+      req.log?.warn?.({ id }, 'admin:hero:get:not_found');
+      return res.status(404).json(formatError('NOT_FOUND', 'Hero banner not found'));
+    }
+    req.log?.info({ id }, 'admin:hero:get:ok');
+    return res.json(addISTFields(item, ['createdAt', 'updatedAt']));
+  } catch (err) {
+    req.log?.error({ err, id }, 'admin:hero:get:fail');
+    return res.status(500).json(formatError('INTERNAL_ERROR', 'Failed to retrieve hero banner'));
   }
 });
 
@@ -55,24 +75,6 @@ router.post('/', async (req, res) => {
   } catch (err: any) {
     req.log?.error({ err }, 'admin:hero:create:fail');
     return res.status(500).json(formatError('INTERNAL_ERROR', 'Failed to create hero banner'));
-  }
-});
-
-// Get by id (admin)
-router.get('/:id', async (req, res) => {
-  const { id } = req.params as { id: string };
-  req.log?.info({ id }, 'admin:hero:get:enter');
-  try {
-    const item = await prisma.heroBanner.findUnique({ where: { id } });
-    if (!item) {
-      req.log?.warn?.({ id }, 'admin:hero:get:not_found');
-      return res.status(404).json(formatError('NOT_FOUND', 'Hero banner not found'));
-    }
-    req.log?.info({ id }, 'admin:hero:get:ok');
-    return res.json(item);
-  } catch (err) {
-    req.log?.error({ err, id }, 'admin:hero:get:fail');
-    return res.status(500).json(formatError('INTERNAL_ERROR', 'Failed to retrieve hero banner'));
   }
 });
 

@@ -1,5 +1,5 @@
 import dotenvFlow from 'dotenv-flow';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import bcrypt from 'bcrypt';
 
 // Load layered env for seeding
@@ -14,24 +14,24 @@ async function main() {
   const email = 'admin@local.dev';
   const isNative = ((process.env.AUTH_MODE || '').trim().toLowerCase() || 'clerk') === 'native';
   const password = 'Admin@123';
-  const passwordHash = isNative ? await bcrypt.hash(password, 10) : undefined;
+  const nativePasswordHash: string | null = isNative ? await bcrypt.hash(password, 10) : null;
   await prisma.user.upsert({
     where: { email },
     update: {
       role: 'ADMIN',
-      ...(isNative ? { passwordHash } : {}),
+      passwordHash: nativePasswordHash,
     },
     create: {
       email,
       name: 'Admin',
       role: 'ADMIN',
-      ...(isNative ? { passwordHash } : {}),
+      passwordHash: nativePasswordHash,
     },
   });
   console.log(`✅ Seeded ADMIN user ${email} (${isNative ? 'native' : 'clerk'} mode)`);
 
   // Seed Hero Banners (no duplicates on re-run)
-  const heroSeeds = [
+  const heroSeeds: Prisma.HeroBannerCreateInput[] = [
     {
       imageUrl: 'https://via.placeholder.com/1200x400/0066cc/ffffff?text=Welcome+to+Icon+Computers',
       title: 'Welcome to Icon Computers',
@@ -62,12 +62,12 @@ async function main() {
   console.log(`✅ Seeded Hero Banners (inserted: ${heroInserted})`);
 
   // Seed Special Offers (no duplicates on re-run)
-  const specialSeeds = [
+  const specialSeeds: Prisma.SpecialOfferCreateInput[] = [
     {
       imageUrl: 'https://via.placeholder.com/400x300/00cc66/ffffff?text=Free+Diagnosis',
       productName: 'Free Computer Diagnosis',
-      priceCents: 0,
-      discountedCents: 0,
+      price: 0,
+      discounted: 0,
       discountPercent: 100,
       sortOrder: 1,
       status: 'ACTIVE',
@@ -75,8 +75,8 @@ async function main() {
     {
       imageUrl: 'https://via.placeholder.com/400x300/0066cc/ffffff?text=Service+Discount',
       productName: 'Laptop Service Discount',
-      priceCents: 299900,
-      discountedCents: 199900,
+      price: 299900,
+      discounted: 199900,
       discountPercent: 33,
       sortOrder: 2,
       status: 'ACTIVE',
@@ -93,12 +93,12 @@ async function main() {
   console.log(`✅ Seeded Special Offers (inserted: ${specialsInserted})`);
 
   // Seed Laptop Offers (no duplicates on re-run)
-  const laptopSeeds = [
+  const laptopSeeds: Prisma.LaptopOfferCreateInput[] = [
     {
       imageUrl: 'https://via.placeholder.com/400x300/333333/ffffff?text=Gaming+Laptop',
       productName: 'Gaming Laptop - RTX 4060',
-      priceCents: 8999900,
-      discountedCents: 7999900,
+      price: 8999900,
+      discounted: 7999900,
       discountPercent: 11,
       sortOrder: 1,
       status: 'ACTIVE',
@@ -106,8 +106,8 @@ async function main() {
     {
       imageUrl: 'https://via.placeholder.com/400x300/666666/ffffff?text=Business+Laptop',
       productName: 'Business Laptop - Intel i7',
-      priceCents: 5999900,
-      discountedCents: 5499900,
+      price: 5999900,
+      discounted: 5499900,
       discountPercent: 8,
       sortOrder: 2,
       status: 'ACTIVE',
