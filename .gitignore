@@ -18,6 +18,10 @@ yarn-error.log*
 dist/
 build/
 
+# Prevent committing compiled TS outputs in src
+src/**/*.js
+src/**/*.js.map
+
 # Test coverage
 coverage/
 .nyc_output/
