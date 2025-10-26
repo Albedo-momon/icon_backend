@@ -27,9 +27,15 @@ A production-grade Node.js/Express API with TypeScript, Prisma, and PostgreSQL f
 
 2. **Set up environment**
    ```bash
-   cp .env.example .env
-   # Edit .env with your database URL
+   # Create your development environment file from the example
+   cp .env.example .env.development
+   # Edit .env.development with your specific configuration
    ```
+   
+   **Important**: 
+   - `.env.development` is not committed to the repository (it's in `.gitignore`)
+   - Copy `.env.example` to `.env.development` and customize it for your local setup
+   - The example file contains all required variables with safe default values
 
 3. **Start PostgreSQL (password: 1234)**
    - Docker (recommended):
@@ -215,13 +221,43 @@ Client usage:
 - **Product** - Product catalog
 - **SectionsConfig** - CMS display configuration
 
-## Environment Variables
+## Environment Configuration
 
+This project uses layered environment files with `dotenv-flow`:
+
+### File Structure
+- **`.env.example`** - Template with all required variables (committed to repo)
+- **`.env.development`** - Your local development config (not committed, create from example)
+- **`.env.local`** - Optional personal overrides (not committed)
+
+### Setup Instructions
+1. Copy the example file: `cp .env.example .env.development`
+2. Edit `.env.development` with your specific values
+3. Optionally create `.env.local` for personal overrides
+
+### Required Variables
 ```env
+# Database
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/icon_backend?schema=public
+
+# Server
 PORT=8080
 CORS_ORIGINS=*
+
+# Authentication (Native mode)
+AUTH_MODE=native
+JWT_SECRET=your_jwt_secret_here
+ADMIN_BOOTSTRAP_SECRET=your_bootstrap_secret_here
+
+# S3 Configuration (for file uploads)
+S3_REGION=your_region
+S3_BUCKET=your_bucket
+S3_ACCESS_KEY_ID=your_access_key
+S3_SECRET_ACCESS_KEY=your_secret_key
+S3_PUBLIC_BASE=https://your_bucket.s3.amazonaws.com
 ```
+
+**Note**: Never commit `.env.development` or `.env.local` files. Only `.env.example` should be in the repository.
 
 ## Development Notes
 
