@@ -54,15 +54,15 @@ export const requireAuthClerk: RequestHandler = (req: Request, res: Response, ne
 
       let email = (decoded as any).email as string | undefined;
       let name = (decoded as any).name as string | undefined;
-      const externalId = (decoded as any).sub as string | undefined;
+      const clerkId = (decoded as any).sub as string | undefined;
 
-      if (!externalId) {
+      if (!clerkId) {
         return res.status(401).json({ error: 'Missing required claims' });
       }
 
       // Fallback: fetch email/name from Clerk if not present in JWT
       if (!email) {
-        const info = await fetchClerkUserInfo(externalId);
+        const info = await fetchClerkUserInfo(clerkId);
         if (info) {
           email = info.email ?? email;
           name = info.name ?? name;
@@ -73,16 +73,16 @@ export const requireAuthClerk: RequestHandler = (req: Request, res: Response, ne
         return res.status(401).json({ error: 'Missing required claims' });
       }
 
-      // Upsert user: try by externalId, else by email, else create
-      let user = await prisma.user.findUnique({ where: { externalId } });
+      // Upsert user: try by clerkId, else by email, else create
+      let user = await prisma.user.findUnique({ where: { clerkId } });
       if (!user) {
         const byEmail = await prisma.user.findUnique({ where: { email } });
         if (byEmail) {
-          user = await prisma.user.update({ where: { email }, data: { externalId, name: byEmail.name ?? name ?? byEmail.email } });
+          user = await prisma.user.update({ where: { email }, data: { clerkId, name: byEmail.name ?? name ?? byEmail.email } });
         } else {
           user = await prisma.user.create({
             data: {
-              externalId,
+              clerkId,
               email,
               name: name ?? email,
               role: 'USER',

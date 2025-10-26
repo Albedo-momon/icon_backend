@@ -30,7 +30,7 @@ router.post('/auth/user/register', async (req, res) => {
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) return res.status(409).json(formatError('EMAIL_EXISTS', 'Email already registered'));
     const passwordHash = await hashPassword(password);
-    const user = await prisma.user.create({ data: { email, name: name ?? null, passwordHash, role: 'USER' } });
+    const user = await prisma.user.create({ data: { email, name: name ?? email, passwordHash, role: 'USER' } });
     const token = signNativeJwt({ uid: user.id, email: user.email, role: user.role });
     res.status(201).json({ token, user: { id: user.id, email: user.email, role: user.role, name: user.name } });
   } catch (error) {
@@ -71,7 +71,7 @@ router.post('/auth/admin/register', async (req, res) => {
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) return res.status(409).json(formatError('EMAIL_EXISTS', 'Email already registered'));
     const passwordHash = await hashPassword(password);
-    const user = await prisma.user.create({ data: { email, name: name ?? null, passwordHash, role: 'ADMIN' } });
+    const user = await prisma.user.create({ data: { email, name: name ?? email, passwordHash, role: 'ADMIN' } });
     const token = signNativeJwt({ uid: user.id, email: user.email, role: user.role });
     res.status(201).json({ token, user: { id: user.id, email: user.email, role: user.role, name: user.name } });
   } catch (error) {
@@ -167,9 +167,9 @@ router.post('/auth/handshake', async (req, res): Promise<void> => {
 
         let email = decoded.email as string | undefined;
         let name = decoded.name as string | undefined;
-        const externalId = decoded.sub as string | undefined;
+        const clerkId = decoded.sub as string | undefined;
 
-        if (!externalId) {
+        if (!clerkId) {
           return res.status(401).json(formatError('MISSING_CLAIMS', 'Missing required claims'));
         }
 
@@ -177,7 +177,7 @@ router.post('/auth/handshake', async (req, res): Promise<void> => {
         if (!email) {
           try {
             const { fetchClerkUserInfo } = await import('../lib/clerk');
-            const info = await fetchClerkUserInfo(externalId);
+            const info = await fetchClerkUserInfo(clerkId);
             if (info) {
               email = info.email ?? email;
               name = info.name ?? name;
@@ -187,28 +187,27 @@ router.post('/auth/handshake', async (req, res): Promise<void> => {
           }
         }
 
-        if (!email) {
-          return res.status(401).json(formatError('MISSING_CLAIMS', 'Missing required claims'));
-        }
-
-        // Idempotent upsert: try by externalId, else by email, else create
-        let user = await prisma.user.findUnique({ where: { externalId } });
+        // Idempotent upsert: try by clerkId, else by email, else create
+        let user = await prisma.user.findUnique({ where: { clerkId } });
         if (!user) {
+          if (!email) {
+            return res.status(401).json(formatError('MISSING_CLAIMS', 'Missing required claims'));
+          }
           const byEmail = await prisma.user.findUnique({ where: { email } });
           if (byEmail) {
-            // Update existing user with externalId and name, but preserve role
-            user = await prisma.user.update({ 
-              where: { email }, 
-              data: { 
-                externalId, 
-                name: name ?? byEmail.name ?? byEmail.email 
-              } 
+            // Update existing user by email to attach clerkId and name
+            user = await prisma.user.update({
+              where: { email },
+              data: {
+                clerkId,
+                name: name ?? byEmail.name ?? byEmail.email,
+              },
             });
           } else {
             // Create new user with default USER role
             user = await prisma.user.create({
               data: {
-                externalId,
+                clerkId,
                 email,
                 name: name ?? email,
                 role: 'USER',
@@ -217,12 +216,13 @@ router.post('/auth/handshake', async (req, res): Promise<void> => {
           }
         } else {
           // Update existing user's email/name without changing role
+          const updateData = {
+            name: name ?? user.name ?? user.email,
+            ...(email ? { email } : {}),
+          };
           user = await prisma.user.update({
-            where: { externalId },
-            data: {
-              email,
-              name: name ?? user.name ?? email,
-            },
+            where: { clerkId },
+            data: updateData,
           });
         }
 
