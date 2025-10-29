@@ -11,7 +11,10 @@
     "migrate": "prisma migrate dev",
     "seed": "prisma db seed",
     "reset": "prisma migrate reset --force",
-    "test": "jest"
+    "test": "jest",
+    "test:notifications": "jest --testPathPatterns=notifications",
+    "test:notifications:integration": "ts-node scripts/test-notifications.ts",
+    "test:notifications:manual": "ts-node scripts/manual-notification-test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
