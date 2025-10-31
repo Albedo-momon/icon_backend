@@ -71,7 +71,7 @@ describe('Admin CRUD and Home aggregator', () => {
       .post('/admin/special-offers')
       .set('Authorization', 'Bearer token')
       .set('x-role', 'ADMIN')
-      .send({ imageUrl: 'https://x/img.png', name: 'X', price: 10000, discounted: 5000, discountPercent: 53 });
+      .send({ imageUrl: 'https://x/img.png', productName: 'X', price: 10000, discounted: 5000, discountPercent: 53 });
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
 
@@ -80,7 +80,7 @@ describe('Admin CRUD and Home aggregator', () => {
       .post('/admin/special-offers')
       .set('Authorization', 'Bearer token')
       .set('x-role', 'ADMIN')
-      .send({ imageUrl: 'https://x/img.png', name: 'X', price: 10000, discounted: 5000, discountPercent: 51 });
+      .send({ imageUrl: 'https://x/img.png', productName: 'X', price: 10000, discounted: 5000, discountPercent: 51 });
     expect(res.status).toBe(201);
   });
 
